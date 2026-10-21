@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartera y Cobros</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2457d6; --accent-soft: #e8eefc; --ok: #15803d; --ok-soft: #e7f6ec;
+    --warn: #b45309; --warn-soft: #fdf3e2; --bad: #b91c1c; --bad-soft: #fdecec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b; --card: #1b1f27; --text: #e8eaee; --muted: #9aa3b2; --line: #2b313c;
+      --accent: #7aa2ff; --accent-soft: #1f2a44; --ok: #4ade80; --ok-soft: #15291d;
+      --warn: #fbbf24; --warn-soft: #2e2512; --bad: #f87171; --bad-soft: #2e1717;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 6px; flex-wrap: wrap; }
+  h1 { font-size: 19px; margin: 0; }
+  nav { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; }
+  nav button { background: none; border: 0; padding: 8px 12px; border-radius: 8px; color: var(--muted); font: inherit; cursor: pointer; white-space: nowrap; }
+  nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  main { padding: 20px 0 60px; }
+  section { display: none; }
+  section.on { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .kpi .label { color: var(--muted); font-size: 13px; }
+  .kpi .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .kpi .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+  textarea { min-height: 120px; resize: vertical; }
+  .form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; cursor: pointer; text-decoration: none; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ok { color: var(--ok); border-color: var(--ok); }
+  .btn.small { padding: 4px 9px; font-size: 13px; }
+  .btn:hover { filter: brightness(0.97); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .spacer { flex: 1; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .p-ok { background: var(--ok-soft); color: var(--ok); }
+  .p-warn { background: var(--warn-soft); color: var(--warn); }
+  .p-bad { background: var(--bad-soft); color: var(--bad); }
+  .p-neutral { background: var(--accent-soft); color: var(--accent); }
+  .muted { color: var(--muted); }
+  .bar { height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--ok); }
+  .aging { display: flex; flex-direction: column; gap: 8px; }
+  .aging .line { display: grid; grid-template-columns: 110px 1fr 140px; gap: 10px; align-items: center; font-size: 14px; }
+  .aging .track { height: 14px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .aging .fill { height: 100%; border-radius: 4px; }
+  .email { border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .email pre { white-space: pre-wrap; font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 12px; border-radius: 8px; margin: 10px 0; max-height: 360px; overflow: auto; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+  .toast.show { opacity: 1; }
+  .notice { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-bottom: 16px; }
+  @media (max-width: 600px) { .aging .line { grid-template-columns: 80px 1fr 110px; font-size: 13px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1>Cartera y Cobros</h1>
+      <span class="muted" id="headerTotal"></span>
+    </div>
+    <nav id="tabs">
+      <button data-tab="resumen" class="on">Resumen</button>
+      <button data-tab="facturas">Facturas</button>
+      <button data-tab="cargar">Cargar mes</button>
+      <button data-tab="correos">Correos del mes</button>
+      <button data-tab="clientes">Clientes</button>
+      <button data-tab="ajustes">Ajustes y respaldo</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="notice" id="backupNotice" hidden></div>
+
+  <!-- RESUMEN -->
+  <section id="resumen" class="on">
+    <div class="grid">
+      <div class="card kpi"><div class="label">Cartera pendiente</div><div class="value" id="kTotal"></div><div class="sub" id="kTotalSub"></div></div>
+      <div class="card kpi"><div class="label">Vencida</div><div class="value" id="kOverdue"></div><div class="sub" id="kOverdueSub"></div></div>
+      <div class="card kpi"><div class="label">Recaudado este mes</div><div class="value" id="kMonth"></div><div class="sub" id="kMonthSub"></div></div>
+      <div class="card kpi"><div class="label">Días promedio de mora</div><div class="value" id="kDays"></div><div class="sub">ponderado por valor</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Meta de cartera</h2>
+      <div class="row" style="margin-bottom:8px"><span id="goalText"></span></div>
+      <div class="bar"><div id="goalBar" style="width:0"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Antigüedad de la cartera</h2>
+      <div class="aging" id="aging"></div>
+    </div>
+
+    <div class="card">
+      <h2>Clientes con mayor saldo</h2>
+      <div class="table-wrap"><table id="topClients"></table></div>
+    </div>
+  </section>
+
+  <!-- FACTURAS -->
+  <section id="facturas">
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <input id="fSearch" placeholder="Buscar factura o cliente…" style="max-width:260px">
+        <select id="fStatus" style="max-width:180px">
+          <option value="pendientes">Pendientes</option>
+          <option value="vencidas">Solo vencidas</option>
+          <option value="pagadas">Pagadas</option>
+          <option value="todas">Todas</option>
+        </select>
+        <select id="fClient" style="max-width:220px"></select>
+        <span class="spacer"></span>
+        <button class="btn" id="exportCsv">Descargar Excel (CSV)</button>
+      </div>
+      <div class="table-wrap"><table id="invTable"></table></div>
+      <div class="muted" id="invFoot" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- CARGAR -->
+  <section id="cargar">
+    <div class="card">
+      <h2>Agregar una factura</h2>
+      <form id="invForm" class="form">
+        <div><label>Cliente</label><input id="iClient" list="clientList" required placeholder="Nombre del cliente"></div>
+        <div><label>N.º de factura</label><input id="iNumber" required placeholder="FE-1234"></div>
+        <div><label>Valor</label><input id="iAmount" required inputmode="numeric" placeholder="12.500.000"></div>
+        <div><label>Fecha de emisión</label><input id="iIssue" type="date" required></div>
+        <div><label>Vencimiento</label><input id="iDue" type="date"></div>
+        <div><button class="btn primary" type="submit">Agregar</button></div>
+      </form>
+      <datalist id="clientList"></datalist>
+      <p class="muted" style="margin:10px 0 0;font-size:13px">Si dejas el vencimiento vacío se calcula con el plazo de pago del cliente (o el plazo por defecto en Ajustes).</p>
+    </div>
+
+    <div class="card">
+      <h2>Pegar varias desde Excel</h2>
+      <p class="muted" style="margin-top:0;font-size:14px">Copia las columnas en este orden y pégalas: <b>Cliente · N.º factura · Valor · Fecha emisión</b> · Vencimiento (opcional). Fechas como 15/10/2026 o 2026-10-15.</p>
+      <textarea id="bulk" placeholder="Constructora Andes&#9;FE-1201&#9;12.500.000&#9;05/10/2026"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="bulkPreview">Revisar</button>
+        <button class="btn primary" id="bulkSave" disabled>Guardar todas</button>
+      </div>
+      <div id="bulkResult" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- CORREOS -->
+  <section id="correos">
+    <div class="card">
+      <div class="row">
+        <div><label>Fecha de corte</label><input type="date" id="cutDate" style="max-width:180px"></div>
+        <div><label>Incluir</label>
+          <select id="mailScope" style="max-width:240px">
+            <option value="all">Todo lo pendiente</option>
+            <option value="overdue">Solo lo vencido</option>
+          </select>
+        </div>
+        <div><label>Tono</label>
+          <select id="mailTone" style="max-width:240px">
+            <option value="auto">Automático según mora</option>
+            <option value="amable">Amable</option>
+            <option value="firme">Firme</option>
+            <option value="final">Último aviso</option>
+          </select>
+        </div>
+      </div>
+      <p class="muted" style="margin:12px 0 0;font-size:13px">Un correo por cliente con todas sus facturas pendientes. Las que marques como pagadas desaparecen solas. El tono automático sube cuando la factura más antigua pasa de 30 / 60 / 90 días de mora.</p>
+    </div>
+    <div id="emails"></div>
+  </section>
+
+  <!-- CLIENTES -->
+  <section id="clientes">
+    <div class="card">
+      <h2>Clientes</h2>
+      <p class="muted" style="margin-top:0;font-size:14px">Guarda el correo de cada cliente (puedes poner varios separados por coma) para que el botón "Abrir en mi correo" ya lo traiga listo.</p>
+      <div class="table-wrap"><table id="clientTable"></table></div>
+    </div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section id="ajustes">
+    <div class="card">
+      <h2>Datos para los correos</h2>
+      <div class="form">
+        <div><label>Nombre de tu empresa</label><input id="sCompany"></div>
+        <div><label>Tu nombre (firma)</label><input id="sSigner"></div>
+        <div><label>Plazo de pago por defecto (días)</label><input id="sTerm" type="number" min="0"></div>
+        <div><label>Meta de cartera (valor a alcanzar)</label><input id="sGoal" inputmode="numeric"></div>
+      </div>
+      <div style="margin-top:12px"><label>Datos para el pago (cuenta, NIT, link de pago…)</label><textarea id="sPayInfo" style="min-height:90px"></textarea></div>
+      <div style="margin-top:12px"><label>Firma completa</label><textarea id="sSignature" style="min-height:80px"></textarea></div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="saveSettings">Guardar</button></div>
+    </div>
+
+    <div class="card">
+      <h2>Respaldo</h2>
+      <p class="muted" style="margin-top:0;font-size:14px">Todo se guarda en este navegador. Descarga un respaldo cada mes (o guárdalo en Drive) para no perder nada si cambias de computador o limpias el navegador.</p>
+      <div class="row">
+        <button class="btn primary" id="backupBtn">Descargar respaldo</button>
+        <label class="btn" style="margin:0;color:var(--text)">Restaurar respaldo<input type="file" id="restoreFile" accept=".json" hidden></label>
+        <span class="spacer"></span>
+        <button class="btn" id="wipeBtn" style="color:var(--bad)">Borrar todo</button>
+      </div>
+      <p class="muted" id="lastBackup" style="font-size:13px;margin-bottom:0"></p>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const KEY = 'cartera-cobros-v1';
+  const DAY = 86400000;
+
+  // ---------- estado ----------
+  const blank = () => ({
+    clients: [], invoices: [],
+    settings: { company: '', signer: '', term: 30, goal: 0, payInfo: '', signature: '', startBalance: null },
+    lastBackup: null
+  });
+  let S = load();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) return Object.assign(blank(), JSON.parse(raw));
+    } catch (e) {}
+    return blank();
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); }
+    catch (e) { toast('No se pudo guardar en el navegador. Descarga un respaldo.'); }
+    render();
+  }
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+  // ---------- utilidades ----------
+  const money = n => '$' + Math.round(n).toLocaleString('es-CO');
+  const short = n => n >= 1e6 ? '$' + (n / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + 'M' : money(n);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const today = () => iso(new Date());
+  function iso(d) { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); }
+  const toDate = s => new Date(s + 'T00:00:00');
+  const addDays = (s, n) => iso(new Date(toDate(s).getTime() + n * DAY));
+  const fmtDate = s => s ? s.split('-').reverse().join('/') : '';
+  const daysBetween = (a, b) => Math.round((toDate(b) - toDate(a)) / DAY);
+  const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const monthName = s => { const d = toDate(s); return MONTHS[d.getMonth()] + ' de ' + d.getFullYear(); };
+
+  function parseAmount(v) {
+    let s = String(v ?? '').trim().replace(/[^\d.,-]/g, '');
+    if (!s) return NaN;
+    s = s.replace(/[.,]\d{1,2}$/, ''); // decimales (centavos) se ignoran
+    return Number(s.replace(/[.,]/g, ''));
+  }
+  function parseDate(v) {
+    const s = String(v ?? '').trim();
+    if (!s) return '';
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+    return null;
+  }
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  // ---------- dominio ----------
+  const paidOf = inv => (inv.payments || []).reduce((a, p) => a + p.amount, 0);
+  const balanceOf = inv => Math.max(0, inv.amount - paidOf(inv));
+  const isOpen = inv => balanceOf(inv) > 0;
+  const overdueDays = (inv, ref = today()) => daysBetween(inv.dueDate, ref);
+  const clientById = id => S.clients.find(c => c.id === id);
+  const clientName = id => clientById(id)?.name || '—';
+
+  function findOrCreateClient(name) {
+    const n = name.trim();
+    let c = S.clients.find(x => x.name.toLowerCase() === n.toLowerCase());
+    if (!c) { c = { id: uid(), name: n, email: '', contact: '', term: null }; S.clients.push(c); }
+    return c;
+  }
+  function dueFor(client, issue) {
+    const term = client.term ?? S.settings.term ?? 30;
+    return addDays(issue, Number(term));
+  }
+  function addInvoice({ client, number, amount, issueDate, dueDate }) {
+    const c = findOrCreateClient(client);
+    const dup = S.invoices.find(i => i.clientId === c.id && i.number.toLowerCase() === number.trim().toLowerCase());
+    if (dup) return { error: `La factura ${number} de ${c.name} ya existe` };
+    S.invoices.push({ id: uid(), clientId: c.id, number: number.trim(), amount, issueDate, dueDate: dueDate || dueFor(c, issueDate), payments: [], created: today() });
+    return { ok: true };
+  }
+  function bucket(days) {
+    if (days <= 0) return 0; if (days <= 30) return 1; if (days <= 60) return 2; if (days <= 90) return 3; return 4;
+  }
+  const BUCKETS = [
+    { name: 'Al día', color: 'var(--accent)' },
+    { name: '1–30 días', color: 'var(--ok)' },
+    { name: '31–60 días', color: 'var(--warn)' },
+    { name: '61–90 días', color: '#e8590c' },
+    { name: '+90 días', color: 'var(--bad)' }
+  ];
+  function statusPill(inv) {
+    if (!isOpen(inv)) return '<span class="pill p-ok">Pagada</span>';
+    const d = overdueDays(inv);
+    const partial = paidOf(inv) > 0 ? ' · abono' : '';
+    if (d <= 0) return `<span class="pill p-neutral">Al día${partial}</span>`;
+    return `<span class="pill ${d > 60 ? 'p-bad' : 'p-warn'}">${d} días vencida${partial}</span>`;
+  }
+  const totalOpen = () => S.invoices.filter(isOpen).reduce((a, i) => a + balanceOf(i), 0);
+
+  // ---------- render ----------
+  function render() {
+    renderSummary(); renderInvoices(); renderClients(); renderEmails(); renderDatalist(); renderBackupNotice();
+    const t = totalOpen();
+    document.getElementById('headerTotal').textContent = S.invoices.length ? 'Cartera: ' + money(t) : '';
+  }
+
+  function renderSummary() {
+    const open = S.invoices.filter(isOpen);
+    const total = open.reduce((a, i) => a + balanceOf(i), 0);
+    const overdue = open.filter(i => overdueDays(i) > 0);
+    const overdueTotal = overdue.reduce((a, i) => a + balanceOf(i), 0);
+    const monthPrefix = today().slice(0, 7);
+    let monthCollected = 0, monthCount = 0;
+    S.invoices.forEach(i => (i.payments || []).forEach(p => { if (p.date.startsWith(monthPrefix)) { monthCollected += p.amount; monthCount++; } }));
+    const weighted = total ? open.reduce((a, i) => a + Math.max(0, overdueDays(i)) * balanceOf(i), 0) / total : 0;
+
+    set('kTotal', money(total));
+    set('kTotalSub', `${open.length} facturas · ${new Set(open.map(i => i.clientId)).size} clientes`);
+    set('kOverdue', money(overdueTotal));
+    set('kOverdueSub', total ? `${Math.round(overdueTotal / total * 100)}% de la cartera` : '—');
+    set('kMonth', money(monthCollected));
+    set('kMonthSub', `${monthCount} pagos registrados en ${MONTHS[new Date().getMonth()]}`);
+    set('kDays', Math.round(weighted) + ' días');
+
+    const start = S.settings.startBalance ?? total;
+    const goal = S.settings.goal || 0;
+    const goalText = document.getElementById('goalText');
+    const bar = document.getElementById('goalBar');
+    if (goal > 0 && start > goal) {
+      const pct = Math.min(100, Math.max(0, (start - total) / (start - goal) * 100));
+      goalText.innerHTML = `Empezaste en <b>${short(start)}</b>, hoy vas en <b>${short(total)}</b>, meta <b>${short(goal)}</b> · ${Math.round(pct)}% del camino`;
+      bar.style.width = pct + '%';
+    } else {
+      goalText.innerHTML = '<span class="muted">Define tu meta (por ejemplo, bajar la cartera a $40M) en Ajustes para ver tu avance.</span>';
+      bar.style.width = '0';
+    }
+
+    const sums = [0, 0, 0, 0, 0];
+    open.forEach(i => sums[bucket(overdueDays(i))] += balanceOf(i));
+    const max = Math.max(...sums, 1);
+    document.getElementById('aging').innerHTML = BUCKETS.map((b, k) => `
+      <div class="line"><span>${b.name}</span>
+        <div class="track"><div class="fill" style="width:${sums[k] / max * 100}%;background:${b.color}"></div></div>
+        <span class="num" style="text-align:right">${money(sums[k])}</span></div>`).join('');
+
+    const byClient = {};
+    open.forEach(i => {
+      const c = byClient[i.clientId] ||= { total: 0, count: 0, oldest: -Infinity };
+      c.total += balanceOf(i); c.count++; c.oldest = Math.max(c.oldest, overdueDays(i));
+    });
+    const rows = Object.entries(byClient).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+    document.getElementById('topClients').innerHTML = rows.length
+      ? `<tr><th>Cliente</th><th class="num">Facturas</th><th class="num">Mora máx.</th><th class="num">Saldo</th><th class="num">% cartera</th></tr>` +
+        rows.map(([id, c]) => `<tr><td>${esc(clientName(id))}</td><td class="num">${c.count}</td>
+          <td class="num">${c.oldest > 0 ? c.oldest + ' días' : 'al día'}</td><td class="num">${money(c.total)}</td>
+          <td class="num">${Math.round(c.total / total * 100)}%</td></tr>`).join('')
+      : '<tr><td class="muted">Aún no hay facturas. Empieza en "Cargar mes".</td></tr>';
+  }
+
+  function renderInvoices() {
+    const sel = document.getElementById('fClient');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Todos los clientes</option>' +
+      [...S.clients].sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    sel.value = cur;
+
+    const q = document.getElementById('fSearch').value.trim().toLowerCase();
+    const st = document.getElementById('fStatus').value;
+    let list = S.invoices.filter(i => {
+      if (sel.value && i.clientId !== sel.value) return false;
+      if (st === 'pendientes' && !isOpen(i)) return false;
+      if (st === 'vencidas' && !(isOpen(i) && overdueDays(i) > 0)) return false;
+      if (st === 'pagadas' && isOpen(i)) return false;
+      if (q && !(i.number.toLowerCase().includes(q) || clientName(i.clientId).toLowerCase().includes(q))) return false;
+      return true;
+    });
+    list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+    const tbl = document.getElementById('invTable');
+    if (!list.length) { tbl.innerHTML = '<tr><td class="muted">No hay facturas con este filtro.</td></tr>'; set('invFoot', ''); return; }
+    tbl.innerHTML = `<tr><th>Cliente</th><th>Factura</th><th>Emisión</th><th>Vence</th><th class="num">Valor</th><th class="num">Saldo</th><th>Estado</th><th></th></tr>` +
+      list.map(i => `<tr>
+        <td>${esc(clientName(i.clientId))}</td><td><b>${esc(i.number)}</b></td>
+        <td>${fmtDate(i.issueDate)}</td><td>${fmtDate(i.dueDate)}</td>
+        <td class="num">${money(i.amount)}</td><td class="num">${money(balanceOf(i))}</td>
+        <td>${statusPill(i)}</td>
+        <td class="row" style="flex-wrap:nowrap">${isOpen(i)
+          ? `<button class="btn small ok" data-act="paid" data-id="${i.id}">Pagada</button>
+             <button class="btn small" data-act="partial" data-id="${i.id}">Abono</button>`
+          : `<button class="btn small" data-act="undo" data-id="${i.id}">Deshacer</button>`}
+          <button class="btn small" data-act="del" data-id="${i.id}" title="Eliminar">✕</button></td></tr>`).join('');
+    set('invFoot', `${list.length} facturas · saldo ${money(list.reduce((a, i) => a + balanceOf(i), 0))}`);
+  }
+
+  function renderClients() {
+    const totals = {};
+    S.invoices.filter(isOpen).forEach(i => totals[i.clientId] = (totals[i.clientId] || 0) + balanceOf(i));
+    const list = [...S.clients].sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0));
+    document.getElementById('clientTable').innerHTML = list.length
+      ? `<tr><th>Cliente</th><th>Contacto</th><th>Correo(s)</th><th>Plazo (días)</th><th class="num">Saldo</th><th>Último correo</th></tr>` +
+        list.map(c => `<tr>
+          <td><input value="${esc(c.name)}" data-cf="name" data-id="${c.id}"></td>
+          <td><input value="${esc(c.contact)}" data-cf="contact" data-id="${c.id}" placeholder="Nombre de quien paga"></td>
+          <td><input value="${esc(c.email)}" data-cf="email" data-id="${c.id}" placeholder="pagos@cliente.com"></td>
+          <td style="width:110px"><input type="number" min="0" value="${c.term ?? ''}" data-cf="term" data-id="${c.id}" placeholder="${S.settings.term}"></td>
+          <td class="num">${money(totals[c.id] || 0)}</td>
+          <td class="muted">${c.lastEmail ? fmtDate(c.lastEmail) : '—'}</td></tr>`).join('')
+      : '<tr><td class="muted">Los clientes se crean solos cuando cargas facturas.</td></tr>';
+  }
+
+  function renderDatalist() {
+    document.getElementById('clientList').innerHTML = S.clients.map(c => `<option value="${esc(c.name)}">`).join('');
+  }
+
+  function renderBackupNotice() {
+    const n = document.getElementById('backupNotice');
+    const lb = S.lastBackup;
+    set('lastBackup', lb ? 'Último respaldo: ' + fmtDate(lb) : 'Aún no has descargado ningún respaldo.');
+    const stale = S.invoices.length && (!lb || daysBetween(lb, today()) > 31);
+    n.hidden = !stale;
+    if (stale) n.innerHTML = (lb ? 'Hace más de un mes que no descargas un respaldo.' : 'Aún no has descargado un respaldo de tu cartera.') + ' <a href="#" id="quickBackup">Descargar ahora</a>';
+  }
+
+  // ---------- correos ----------
+  const TONES = {
+    amable: {
+      intro: n => `Hola ${n},\n\nEspero que estés muy bien. Te compartimos el estado de cuenta con las facturas que tenemos pendientes de pago a la fecha:`,
+      close: 'Te agradecemos tu ayuda programando estos pagos. Si alguno ya fue realizado, por favor envíanos el soporte para actualizar nuestros registros.'
+    },
+    firme: {
+      intro: n => `Hola ${n},\n\nTe escribimos para hacer seguimiento a las siguientes facturas, varias de ellas con más de 30 días de vencidas:`,
+      close: 'Te pedimos por favor confirmarnos una fecha de pago para estas facturas esta semana. Si alguna ya fue pagada, envíanos el soporte y la descontamos de inmediato.'
+    },
+    final: {
+      intro: n => `Hola ${n},\n\nA pesar de nuestros recordatorios anteriores, las siguientes facturas continúan pendientes y algunas superan los 90 días de vencimiento:`,
+      close: 'Necesitamos regularizar este saldo a la mayor brevedad. Te pedimos confirmar fecha de pago en los próximos 5 días hábiles; si no es posible pagar todo de una vez, con gusto revisamos un acuerdo de pago. Si ya realizaste algún pago, envíanos el soporte.'
+    }
+  };
+
+  function buildEmail(client, invs, cut, toneSel) {
+    const maxDays = Math.max(...invs.map(i => overdueDays(i, cut)));
+    const tone = toneSel !== 'auto' ? toneSel : maxDays > 90 ? 'final' : maxDays > 30 ? 'firme' : 'amable';
+    const total = invs.reduce((a, i) => a + balanceOf(i), 0);
+    const st = S.settings;
+    const greet = client.contact?.trim() || client.name;
+    const lines = invs.map(i => {
+      const d = overdueDays(i, cut);
+      const state = d > 0 ? `vencida hace ${d} días` : d === 0 ? 'vence hoy' : `vence el ${fmtDate(i.dueDate)}`;
+      const partial = paidOf(i) > 0 ? ` (saldo después de abonos; valor original ${money(i.amount)})` : '';
+      return `• Factura ${i.number} – emitida ${fmtDate(i.issueDate)} – ${money(balanceOf(i))} – ${state}${partial}`;
+    });
+    const subject = `Estado de cuenta ${st.company ? st.company + ' ' : ''}– ${client.name} – corte ${monthName(cut)}`;
+    const body = [
+      TONES[tone].intro(greet), '',
+      ...lines, '',
+      `Total pendiente: ${money(total)}`, '',
+      TONES[tone].close,
+      st.payInfo?.trim() ? '\nDatos para el pago:\n' + st.payInfo.trim() : '',
+      '', 'Muchas gracias,', st.signature?.trim() || [st.signer, st.company].filter(Boolean).join('\n')
+    ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return { subject, body, total, tone, maxDays };
+  }
+
+  function renderEmails() {
+    const cutEl = document.getElementById('cutDate');
+    if (!cutEl.value) cutEl.value = today();
+    const cut = cutEl.value;
+    const scope = document.getElementById('mailScope').value;
+    const toneSel = document.getElementById('mailTone').value;
+
+    const groups = {};
+    S.invoices.filter(isOpen).filter(i => i.issueDate <= cut).filter(i => scope === 'all' || overdueDays(i, cut) > 0)
+      .forEach(i => (groups[i.clientId] ||= []).push(i));
+    const entries = Object.entries(groups).map(([id, invs]) => {
+      invs.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      return { client: clientById(id), invs, mail: buildEmail(clientById(id), invs, cut, toneSel) };
+    }).sort((a, b) => b.mail.total - a.mail.total);
+
+    const box = document.getElementById('emails');
+    if (!entries.length) { box.innerHTML = '<div class="card muted">No hay facturas pendientes para enviar. 🎉</div>'; return; }
+    const toneName = { amable: 'Amable', firme: 'Firme', final: 'Último aviso' };
+    const toneCls = { amable: 'p-ok', firme: 'p-warn', final: 'p-bad' };
+    box.innerHTML = `<div class="card row"><b>${entries.length} correos</b><span class="muted">· ${money(entries.reduce((a, e) => a + e.mail.total, 0))} por cobrar</span></div>` +
+      entries.map(({ client, invs, mail }) => {
+        const mailto = `mailto:${encodeURIComponent(client.email || '').replace(/%2C/gi, ',').replace(/%40/g, '@')}?subject=${encodeURIComponent(mail.subject)}&body=${encodeURIComponent(mail.body)}`;
+        return `<div class="card email">
+          <div class="row"><b>${esc(client.name)}</b>
+            <span class="pill ${toneCls[mail.tone]}">${toneName[mail.tone]}</span>
+            <span class="muted">${invs.length} factura${invs.length > 1 ? 's' : ''} · ${money(mail.total)}</span>
+            <span class="spacer"></span>
+            ${client.email ? `<span class="muted" style="font-size:13px">${esc(client.email)}</span>` : '<span class="pill p-warn">Sin correo — agrégalo en Clientes</span>'}
+          </div>
+          <div style="margin-top:10px"><label>Asunto</label><input readonly value="${esc(mail.subject)}"></div>
+          <pre>${esc(mail.body)}</pre>
+          <div class="row">
+            <button class="btn" data-copy="subject" data-cid="${client.id}">Copiar asunto</button>
+            <button class="btn" data-copy="body" data-cid="${client.id}">Copiar correo</button>
+            <a class="btn primary" href="${mailto}" data-sent="${client.id}">Abrir en mi correo</a>
+            <button class="btn" data-mark="${client.id}">Marcar como enviado</button>
+            ${client.lastEmail ? `<span class="muted" style="font-size:13px">Último envío: ${fmtDate(client.lastEmail)}</span>` : ''}
+          </div></div>`;
+      }).join('');
+    renderEmails.cache = Object.fromEntries(entries.map(e => [e.client.id, e.mail]));
+  }
+
+  // ---------- eventos ----------
+  const set = (id, v) => { document.getElementById(id).textContent = v; };
+
+  document.getElementById('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tab]'); if (!b) return;
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('main section').forEach(s => s.classList.toggle('on', s.id === b.dataset.tab));
+    try { localStorage.setItem(KEY + '-tab', b.dataset.tab); } catch (e) {}
+  });
+  try { const t = localStorage.getItem(KEY + '-tab'); if (t) document.querySelector(`#tabs button[data-tab="${t}"]`)?.click(); } catch (e) {}
+
+  // Formulario individual
+  const iIssue = document.getElementById('iIssue');
+  iIssue.value = today();
+  document.getElementById('invForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const amount = parseAmount(document.getElementById('iAmount').value);
+    if (!(amount > 0)) return toast('Revisa el valor de la factura');
+    const r = addInvoice({
+      client: document.getElementById('iClient').value, number: document.getElementById('iNumber').value,
+      amount, issueDate: iIssue.value, dueDate: document.getElementById('iDue').value
+    });
+    if (r.error) return toast(r.error);
+    save();
+    ['iNumber', 'iAmount', 'iDue'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('iNumber').focus();
+    toast('Factura agregada');
+  });
+  document.getElementById('iAmount').addEventListener('blur', e => {
+    const n = parseAmount(e.target.value); if (n > 0) e.target.value = n.toLocaleString('es-CO');
+  });
+
+  // Carga masiva
+  let bulkRows = [];
+  document.getElementById('bulkPreview').addEventListener('click', () => {
+    const text = document.getElementById('bulk').value;
+    bulkRows = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map((line, n) => {
+      const cols = line.includes('\t') ? line.split('\t') : line.split(/;|,(?=\s*\S)(?![^"]*")/).map(s => s.replace(/^"|"$/g, ''));
+      const [client, number, amountRaw, issueRaw, dueRaw] = cols.map(c => (c || '').trim());
+      const amount = parseAmount(amountRaw), issueDate = parseDate(issueRaw) || '', dueDate = parseDate(dueRaw);
+      let err = '';
+      if (!client || !number) err = 'Falta cliente o número';
+      else if (!(amount > 0)) err = 'Valor inválido';
+      else if (!issueDate) err = 'Fecha de emisión inválida';
+      else if (dueDate === null) err = 'Vencimiento inválido';
+      else {
+        const c = S.clients.find(x => x.name.toLowerCase() === client.toLowerCase());
+        if (c && S.invoices.some(i => i.clientId === c.id && i.number.toLowerCase() === number.toLowerCase())) err = 'Ya existe';
+      }
+      return { n: n + 1, client, number, amount, issueDate, dueDate: dueDate || '', err };
+    });
+    // la primera línea puede ser el encabezado
+    if (bulkRows[0]?.err && /cliente/i.test(bulkRows[0].client)) bulkRows.shift();
+    const ok = bulkRows.filter(r => !r.err);
+    document.getElementById('bulkSave').disabled = !ok.length;
+    document.getElementById('bulkResult').innerHTML = bulkRows.length ? `<div class="table-wrap"><table>
+      <tr><th>Cliente</th><th>Factura</th><th class="num">Valor</th><th>Emisión</th><th>Vence</th><th></th></tr>
+      ${bulkRows.map(r => `<tr><td>${esc(r.client)}</td><td>${esc(r.number)}</td><td class="num">${r.amount > 0 ? money(r.amount) : '—'}</td>
+        <td>${fmtDate(r.issueDate)}</td><td>${r.dueDate ? fmtDate(r.dueDate) : '<span class="muted">automático</span>'}</td>
+        <td>${r.err ? `<span class="pill p-bad">${r.err}</span>` : '<span class="pill p-ok">OK</span>'}</td></tr>`).join('')}
+      </table></div><p class="muted">${ok.length} listas para guardar · total ${money(ok.reduce((a, r) => a + r.amount, 0))}</p>` : '';
+  });
+  document.getElementById('bulkSave').addEventListener('click', () => {
+    let added = 0;
+    bulkRows.filter(r => !r.err).forEach(r => { if (addInvoice(r).ok) added++; });
+    bulkRows = [];
+    document.getElementById('bulk').value = '';
+    document.getElementById('bulkResult').innerHTML = '';
+    document.getElementById('bulkSave').disabled = true;
+    save(); toast(`${added} facturas guardadas`);
+  });
+
+  // Acciones sobre facturas
+  document.getElementById('invTable').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const inv = S.invoices.find(i => i.id === b.dataset.id); if (!inv) return;
+    const act = b.dataset.act;
+    if (act === 'paid') {
+      const d = prompt(`¿Fecha de pago de la factura ${inv.number}? (dd/mm/aaaa)`, fmtDate(today()));
+      if (d === null) return;
+      const date = parseDate(d); if (!date) return toast('Fecha inválida');
+      inv.payments.push({ date, amount: balanceOf(inv), note: 'pago total' });
+      toast(`Factura ${inv.number} marcada como pagada`);
+    } else if (act === 'partial') {
+      const v = prompt(`Valor del abono a ${inv.number} (saldo ${money(balanceOf(inv))}):`);
+      if (v === null) return;
+      const amt = parseAmount(v); if (!(amt > 0)) return toast('Valor inválido');
+      inv.payments.push({ date: today(), amount: Math.min(amt, balanceOf(inv)), note: 'abono' });
+      toast('Abono registrado');
+    } else if (act === 'undo') {
+      inv.payments = [];
+      toast('La factura vuelve a quedar pendiente');
+    } else if (act === 'del') {
+      if (!confirm(`¿Eliminar la factura ${inv.number}? Esto no se puede deshacer.`)) return;
+      S.invoices = S.invoices.filter(i => i !== inv);
+    }
+    save();
+  });
+  ['fSearch', 'fStatus', 'fClient'].forEach(id => document.getElementById(id).addEventListener('input', renderInvoices));
+
+  // Exportar CSV (abre en Excel)
+  document.getElementById('exportCsv').addEventListener('click', () => {
+    const rows = [['Cliente', 'Factura', 'Emisión', 'Vencimiento', 'Valor', 'Abonado', 'Saldo', 'Días vencida', 'Estado']];
+    S.invoices.forEach(i => rows.push([clientName(i.clientId), i.number, fmtDate(i.issueDate), fmtDate(i.dueDate), i.amount, paidOf(i), balanceOf(i),
+      isOpen(i) ? Math.max(0, overdueDays(i)) : '', isOpen(i) ? 'Pendiente' : 'Pagada']));
+    const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    download(`cartera-${today()}.csv`, csv, 'text/csv');
+  });
+
+  // Clientes
+  document.getElementById('clientTable').addEventListener('change', e => {
+    const f = e.target.dataset.cf; if (!f) return;
+    const c = clientById(e.target.dataset.id); if (!c) return;
+    const v = e.target.value.trim();
+    if (f === 'term') c.term = v === '' ? null : Number(v);
+    else if (f === 'name' && !v) return render();
+    else c[f] = v;
+    save(); toast('Cliente actualizado');
+  });
+
+  // Correos
+  ['cutDate', 'mailScope', 'mailTone'].forEach(id => document.getElementById(id).addEventListener('input', renderEmails));
+  document.getElementById('emails').addEventListener('click', async e => {
+    const copy = e.target.closest('[data-copy]');
+    if (copy) {
+      const m = renderEmails.cache[copy.dataset.cid];
+      try { await navigator.clipboard.writeText(m[copy.dataset.copy]); toast('Copiado'); }
+      catch (err) { toast('No se pudo copiar; selecciona el texto manualmente'); }
+      return;
+    }
+    const mark = e.target.closest('[data-mark]') || e.target.closest('[data-sent]');
+    if (mark) {
+      const c = clientById(mark.dataset.mark || mark.dataset.sent);
+      if (c) { c.lastEmail = today(); setTimeout(save, 300); if (mark.dataset.mark) toast('Marcado como enviado'); }
+    }
+  });
+
+  // Ajustes
+  const SF = { sCompany: 'company', sSigner: 'signer', sTerm: 'term', sGoal: 'goal', sPayInfo: 'payInfo', sSignature: 'signature' };
+  function fillSettings() {
+    Object.entries(SF).forEach(([id, k]) => {
+      const v = S.settings[k];
+      document.getElementById(id).value = k === 'goal' ? (v ? Number(v).toLocaleString('es-CO') : '') : (v ?? '');
+    });
+  }
+  document.getElementById('saveSettings').addEventListener('click', () => {
+    Object.entries(SF).forEach(([id, k]) => {
+      const v = document.getElementById(id).value;
+      S.settings[k] = k === 'goal' ? (parseAmount(v) || 0) : k === 'term' ? (Number(v) || 0) : v;
+    });
+    if (S.settings.goal && S.settings.startBalance == null) S.settings.startBalance = totalOpen();
+    save(); fillSettings(); toast('Ajustes guardados');
+  });
+
+  // Respaldo
+  function download(name, content, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type }));
+    a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function backup() {
+    S.lastBackup = today();
+    download(`respaldo-cartera-${today()}.json`, JSON.stringify(S, null, 2), 'application/json');
+    save();
+  }
+  document.getElementById('backupBtn').addEventListener('click', backup);
+  document.getElementById('backupNotice').addEventListener('click', e => { if (e.target.id === 'quickBackup') { e.preventDefault(); backup(); } });
+  document.getElementById('restoreFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!Array.isArray(data.invoices) || !Array.isArray(data.clients)) throw new Error();
+      if (!confirm(`Restaurar ${data.invoices.length} facturas y ${data.clients.length} clientes? Reemplaza lo que hay ahora.`)) return;
+      S = Object.assign(blank(), data); save(); fillSettings(); toast('Respaldo restaurado');
+    } catch (err) { toast('El archivo no es un respaldo válido'); }
+    e.target.value = '';
+  });
+  document.getElementById('wipeBtn').addEventListener('click', () => {
+    if (!confirm('¿Borrar TODAS las facturas, clientes y ajustes? Descarga un respaldo antes.')) return;
+    if (prompt('Escribe BORRAR para confirmar') !== 'BORRAR') return;
+    S = blank(); save(); fillSettings(); toast('Datos borrados');
+  });
+
+  fillSettings();
+  render();
+})();
+</script>
+</body>
+</html>
