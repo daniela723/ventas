@@ -4,7 +4,13 @@ Herramienta para hacer seguimiento a las facturas pendientes y generar el correo
 
 Funciona en tu computador, sin internet y sin instalar nada.
 
-## Cómo tenerla en tu computador
+## Abrirla desde cualquier lado
+
+Está publicada en GitHub Pages: **https://daniela723.github.io/ventas/**
+
+Los datos se guardan en el navegador de cada equipo. Para pasar tu cartera a otro computador o al celular: en el equipo de siempre usa **Descargar respaldo**, y en el nuevo usa **Restaurar respaldo**.
+
+## Cómo tenerla en tu computador (sin internet)
 
 1. En GitHub, en esta rama, haz clic en **Code → Download ZIP**.
 2. Descomprime el ZIP en una carpeta fija, por ejemplo `Documentos/Cartera`.
