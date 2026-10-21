@@ -2,7 +2,17 @@
 
 Herramienta para hacer seguimiento a las facturas pendientes y generar el correo mensual de cobro a cada cliente.
 
-Es un solo archivo, `index.html`: se abre con doble clic en cualquier navegador, no hay que instalar nada. Solo para leer PDFs necesita internet.
+Funciona en tu computador, sin internet y sin instalar nada.
+
+## Cómo tenerla en tu computador
+
+1. En GitHub, en esta rama, haz clic en **Code → Download ZIP**.
+2. Descomprime el ZIP en una carpeta fija, por ejemplo `Documentos/Cartera`.
+3. Abre `index.html` con doble clic (mejor en Chrome o Edge). Puedes crear un acceso directo o guardarlo en favoritos.
+
+Mantén juntos `index.html` y la carpeta `lib` (ahí está el lector de PDF). No muevas la carpeta de lugar después de empezar a usarla, y ábrela siempre con el mismo navegador: ahí es donde quedan guardados tus datos.
+
+Para actualizar a una versión nueva: descarga el ZIP otra vez y reemplaza los archivos en la misma carpeta. Tus datos no se pierden porque están en el navegador, no en los archivos.
 
 ## Cómo se usa cada mes
 

@@ -639,16 +639,19 @@
   });
 
   // ---------- PDF de facturas ----------
-  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  // Lector de PDF: primero la copia local (lib/), si no está, internet.
+  const PDFJS_SOURCES = ['lib/', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/'];
   function loadPdfJs() {
     if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-    return loadPdfJs.p ||= new Promise((ok, fail) => {
+    const tryFrom = k => new Promise((ok, fail) => {
+      if (k >= PDFJS_SOURCES.length) return fail(new Error('No se pudo cargar el lector de PDF. Verifica que la carpeta "lib" esté junto a este archivo.'));
       const s = document.createElement('script');
-      s.src = PDFJS + 'pdf.min.js';
-      s.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; ok(pdfjsLib); };
-      s.onerror = () => { loadPdfJs.p = null; fail(new Error('No se pudo cargar el lector de PDF. Revisa tu conexión a internet.')); };
+      s.src = PDFJS_SOURCES[k] + 'pdf.min.js';
+      s.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_SOURCES[k] + 'pdf.worker.min.js'; ok(pdfjsLib); };
+      s.onerror = () => { s.remove(); tryFrom(k + 1).then(ok, fail); };
       document.head.appendChild(s);
     });
+    return loadPdfJs.p ||= tryFrom(0).catch(err => { loadPdfJs.p = null; throw err; });
   }
   // Números del PDF en formato 1,234,567.89
   const pdfNum = s => { const m = String(s || '').match(/-?[\d,]+(?:\.\d+)?/); return m ? Number(m[0].replace(/,/g, '')) : NaN; };
