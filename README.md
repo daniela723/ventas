@@ -8,7 +8,17 @@ Funciona en tu computador, sin internet y sin instalar nada.
 
 Está publicada en GitHub Pages: **https://daniela723.github.io/ventas/**
 
-Los datos se guardan en el navegador de cada equipo. Para pasar tu cartera a otro computador o al celular: en el equipo de siempre usa **Descargar respaldo**, y en el nuevo usa **Restaurar respaldo**.
+Tus datos se sincronizan con Google Drive (**Ajustes y respaldo → Google Drive → Conectar**). Se guardan en el archivo "Cartera y Cobros - datos.json" de tu Drive, y cada equipo donde abras el link y conectes Drive ve la misma cartera. Si cambias algo en dos equipos al mismo tiempo, se juntan los cambios; si se toca la misma factura, gana el cambio más reciente.
+
+La sincronización solo funciona desde el link de GitHub Pages (no al abrir `index.html` con doble clic).
+
+### Configuración única de Google (ID de cliente)
+
+1. Entra a https://console.cloud.google.com/ con tu cuenta de Google y crea un proyecto (por ejemplo "Cartera").
+2. **APIs y servicios → Biblioteca**: busca **Google Drive API** y dale **Habilitar**.
+3. **APIs y servicios → Pantalla de consentimiento de OAuth**: tipo **Externo**, nombre "Cartera y Cobros", tu correo. En **Usuarios de prueba** agrega tu correo. (Puedes dejarla en modo de prueba.)
+4. **APIs y servicios → Credenciales → Crear credenciales → ID de cliente de OAuth**: tipo **Aplicación web**. En **Orígenes de JavaScript autorizados** agrega `https://daniela723.github.io`. Guarda.
+5. Copia el **ID de cliente** (termina en `.apps.googleusercontent.com`) y ponlo en la constante `GOOGLE_CLIENT_ID` de `index.html` (o pégalo en **Ajustes → Google Drive** de cada equipo).
 
 ## Cómo tenerla en tu computador (sin internet)
 

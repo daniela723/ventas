@@ -76,7 +76,7 @@
   <div class="wrap">
     <div class="top">
       <h1>Cartera y Cobros</h1>
-      <span class="muted" id="headerTotal"></span>
+      <div class="row"><span class="muted" id="headerTotal"></span><button class="btn small" id="driveChip" hidden></button></div>
     </div>
     <nav id="tabs">
       <button data-tab="resumen" class="on">Resumen</button>
@@ -232,6 +232,12 @@
     </div>
 
     <div class="card">
+      <h2>Google Drive</h2>
+      <p class="muted" style="margin-top:0;font-size:14px">Guarda tu cartera en un archivo de tu Google Drive ("Cartera y Cobros - datos.json") y la sincroniza en todos los equipos donde abras la herramienta. La página solo puede ver los archivos que ella misma creó en tu Drive.</p>
+      <div id="driveBox"></div>
+    </div>
+
+    <div class="card">
       <h2>Respaldo</h2>
       <p class="muted" style="margin-top:0;font-size:14px">Todo se guarda en este navegador. Descarga un respaldo cada mes (o guárdalo en Drive) para no perder nada si cambias de computador o limpias el navegador.</p>
       <div class="row">
@@ -256,9 +262,12 @@
   const blank = () => ({
     clients: [], invoices: [],
     settings: { company: '', signer: '', term: 30, goal: 0, payInfo: '', signature: '', startBalance: null },
-    lastBackup: null
+    lastBackup: null,
+    deleted: {},      // id -> momento en que se borró (para sincronizar borrados entre equipos)
+    settingsUpd: 0
   });
   let S = load();
+  let snap = snapshot();
 
   function load() {
     try {
@@ -268,9 +277,50 @@
     return blank();
   }
   function save() {
+    stamp();
+    persistLocal();
+    render();
+    Drive.scheduleSync();
+  }
+  function persistLocal() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); }
     catch (e) { toast('No se pudo guardar en el navegador. Descarga un respaldo.'); }
-    render();
+  }
+
+  // Marca con la hora cada factura, cliente o ajuste que cambió desde la última vez,
+  // y registra lo borrado. Así, al juntar los datos de dos equipos, gana el cambio más reciente.
+  function snapshot() {
+    const m = {};
+    S.invoices.forEach(r => { const { upd, ...x } = r; m['i' + r.id] = JSON.stringify(x); });
+    S.clients.forEach(r => { const { upd, ...x } = r; m['c' + r.id] = JSON.stringify(x); });
+    m.settings = JSON.stringify(S.settings);
+    return m;
+  }
+  function stamp() {
+    const now = Date.now(), next = snapshot();
+    S.invoices.forEach(r => { if (snap['i' + r.id] !== next['i' + r.id]) r.upd = now; });
+    S.clients.forEach(r => { if (snap['c' + r.id] !== next['c' + r.id]) r.upd = now; });
+    if (snap.settings !== next.settings) S.settingsUpd = now;
+    Object.keys(snap).forEach(k => { if (k !== 'settings' && !(k in next)) S.deleted[k.slice(1)] = now; });
+    snap = next;
+  }
+  function mergeStates(a, b) {
+    const deleted = { ...a.deleted };
+    Object.entries(b.deleted || {}).forEach(([id, t]) => { deleted[id] = Math.max(deleted[id] || 0, t); });
+    const join = (x, y) => {
+      const m = new Map(x.map(r => [r.id, r]));
+      y.forEach(r => { const o = m.get(r.id); if (!o || (r.upd || 0) > (o.upd || 0)) m.set(r.id, r); });
+      return [...m.values()].filter(r => !(deleted[r.id] >= (r.upd || 0)));
+    };
+    const bNewer = (b.settingsUpd || 0) > (a.settingsUpd || 0);
+    return Object.assign(blank(), {
+      invoices: join(a.invoices, b.invoices || []),
+      clients: join(a.clients, b.clients || []),
+      settings: bNewer ? b.settings : a.settings,
+      settingsUpd: Math.max(a.settingsUpd || 0, b.settingsUpd || 0),
+      lastBackup: [a.lastBackup, b.lastBackup].filter(Boolean).sort().pop() || null,
+      deleted
+    });
   }
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
@@ -478,7 +528,7 @@
     const n = document.getElementById('backupNotice');
     const lb = S.lastBackup;
     set('lastBackup', lb ? 'Último respaldo: ' + fmtDate(lb) : 'Aún no has descargado ningún respaldo.');
-    const stale = S.invoices.length && (!lb || daysBetween(lb, today()) > 31);
+    const stale = S.invoices.length && !Drive.connected() && (!lb || daysBetween(lb, today()) > 31);
     n.hidden = !stale;
     if (stale) n.innerHTML = (lb ? 'Hace más de un mes que no descargas un respaldo.' : 'Aún no has descargado un respaldo de tu cartera.') + ' <a href="#" id="quickBackup">Descargar ahora</a>';
   }
@@ -904,8 +954,165 @@
     S = blank(); save(); fillSettings(); toast('Datos borrados');
   });
 
+  // ---------- Google Drive ----------
+  // ID de cliente OAuth de Google Cloud, autorizado para https://daniela723.github.io
+  const GOOGLE_CLIENT_ID = '';
+  const Drive = (() => {
+    const DKEY = KEY + '-drive';
+    const FILE_NAME = 'Cartera y Cobros - datos.json';
+    const API = 'https://www.googleapis.com/drive/v3/files';
+    const UP = 'https://www.googleapis.com/upload/drive/v3/files';
+    let meta = readMeta();   // { connected, fileId, version, dirty, lastSync, clientId }
+    let token = null, tokenExp = 0, tokenClient = null, timer = null, chain = Promise.resolve();
+    let status = meta.connected ? 'auth' : '', statusMsg = '';
+
+    function readMeta() { try { return JSON.parse(localStorage.getItem(DKEY)) || {}; } catch (e) { return {}; } }
+    function writeMeta() { try { localStorage.setItem(DKEY, JSON.stringify(meta)); } catch (e) {} }
+    const clientId = () => GOOGLE_CLIENT_ID || meta.clientId || '';
+    const onFile = location.protocol === 'file:';
+    const hasToken = () => token && Date.now() < tokenExp - 60000;
+
+    function loadGis() {
+      if (window.google?.accounts?.oauth2) return Promise.resolve();
+      return loadGis.p ||= new Promise((ok, fail) => {
+        const s = document.createElement('script');
+        s.src = 'https://accounts.google.com/gsi/client';
+        s.onload = ok;
+        s.onerror = () => { loadGis.p = null; fail(new Error('No se pudo conectar con Google. Revisa tu internet.')); };
+        document.head.appendChild(s);
+      });
+    }
+    async function getToken(interactive) {
+      if (hasToken()) return token;
+      if (!interactive) throw Object.assign(new Error('auth'), { auth: true });
+      await loadGis();
+      return new Promise((ok, fail) => {
+        tokenClient ||= google.accounts.oauth2.initTokenClient({ client_id: clientId(), scope: 'https://www.googleapis.com/auth/drive.file', callback: () => {} });
+        tokenClient.callback = r => {
+          if (r.error) return fail(new Error(r.error_description || r.error));
+          token = r.access_token; tokenExp = Date.now() + r.expires_in * 1000; ok(token);
+        };
+        tokenClient.error_callback = e => fail(new Error(e?.type === 'popup_closed' ? 'Cerraste la ventana de Google.' : 'Google no abrió la ventana de acceso. Revisa que el navegador permita ventanas emergentes.'));
+        tokenClient.requestAccessToken({ prompt: meta.connected ? '' : 'consent' });
+      });
+    }
+    async function api(url, opts = {}) {
+      const res = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
+      if (res.status === 401) { token = null; throw Object.assign(new Error('auth'), { auth: true }); }
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('Google Drive respondió con error ' + res.status);
+      return res;
+    }
+    async function findFile() {
+      if (meta.fileId) {
+        const r = await api(`${API}/${meta.fileId}?fields=id,version,trashed`);
+        if (r) { const f = await r.json(); if (!f.trashed) return f; }
+      }
+      const q = encodeURIComponent(`name='${FILE_NAME}' and trashed=false`);
+      const r = await api(`${API}?q=${q}&fields=files(id,version)&orderBy=modifiedTime%20desc&pageSize=1`);
+      return (await r.json()).files?.[0] || null;
+    }
+    async function upload(fileId) {
+      const body = JSON.stringify(S);
+      if (fileId) {
+        const r = await api(`${UP}/${fileId}?uploadType=media&fields=id,version`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+        if (r) return r.json();
+      }
+      const b = 'cartera' + uid();
+      const multipart = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+        JSON.stringify({ name: FILE_NAME, mimeType: 'application/json' }) +
+        `\r\n--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${body}\r\n--${b}--`;
+      const r = await api(`${UP}?uploadType=multipart&fields=id,version`, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body: multipart });
+      return r.json();
+    }
+    // Trae lo de Drive, lo junta con lo de este equipo y sube el resultado si cambió algo.
+    async function syncNow(interactive) {
+      await getToken(interactive);
+      setStatus('sync');
+      const f = await findFile();
+      let needUpload = !f || meta.dirty;
+      if (f && (f.id !== meta.fileId || f.version !== meta.version)) {
+        const remote = Object.assign(blank(), await (await api(`${API}/${f.id}?alt=media`)).json());
+        const before = JSON.stringify(S);
+        S = mergeStates(S, remote);
+        snap = snapshot();
+        persistLocal();
+        if (JSON.stringify(S) !== before) { render(); fillSettings(); }
+        needUpload = needUpload || JSON.stringify(S) !== JSON.stringify(remote);
+      }
+      let res = f;
+      if (needUpload) res = await upload(f?.id);
+      Object.assign(meta, { connected: true, fileId: res.id, version: res.version, dirty: false, lastSync: Date.now() });
+      writeMeta();
+    }
+    function run(interactive) {
+      chain = chain.then(() => syncNow(interactive))
+        .then(() => setStatus('ok'))
+        .catch(e => e.auth ? setStatus('auth') : setStatus('error', e.message));
+      return chain;
+    }
+    function scheduleSync() {
+      meta.dirty = true; writeMeta();
+      if (!meta.connected) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => run(false), 1500);
+    }
+    function setStatus(s, msg = '') { status = s; statusMsg = msg; renderDrive(); }
+
+    function renderDrive() {
+      const chip = document.getElementById('driveChip');
+      const box = document.getElementById('driveBox');
+      const time = meta.lastSync ? new Date(meta.lastSync).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+      if (onFile) {
+        chip.hidden = true;
+        box.innerHTML = '<p style="margin:0">La sincronización con Drive funciona cuando abres la herramienta desde <a href="https://daniela723.github.io/ventas/">daniela723.github.io/ventas</a>.</p>';
+        return;
+      }
+      if (!clientId()) {
+        chip.hidden = true;
+        box.innerHTML = `<p style="margin-top:0">Falta el ID de cliente de Google para activar la sincronización.</p>
+          <div class="row"><input id="gcid" placeholder="xxxxxxxx.apps.googleusercontent.com" style="max-width:420px"><button class="btn primary" id="gcidSave">Guardar ID</button></div>`;
+        return;
+      }
+      const labels = {
+        '': ['Conectar Drive', 'primary'], auth: ['☁ Sincronizar con Drive', 'primary'], sync: ['☁ Sincronizando…', ''],
+        ok: ['☁ Drive ✓ ' + time, ''], error: ['☁ Error de Drive · reintentar', '']
+      };
+      const [label, cls] = labels[meta.connected ? status : ''] || labels.auth;
+      chip.hidden = false; chip.textContent = label; chip.className = 'btn small ' + cls;
+      box.innerHTML = meta.connected
+        ? `<p style="margin-top:0">${status === 'ok' ? `Última sincronización: ${time}` : status === 'sync' ? 'Sincronizando…' : status === 'error' ? `<span style="color:var(--bad)">${esc(statusMsg)}</span>` : 'Conectado. Toca "Sincronizar" para traer los últimos datos.'}</p>
+           <div class="row"><button class="btn primary" data-drive="sync">Sincronizar ahora</button><button class="btn" data-drive="off">Desconectar</button></div>`
+        : `${status === 'error' ? `<p style="color:var(--bad);margin-top:0">${esc(statusMsg)}</p>` : ''}
+           <button class="btn primary" data-drive="sync">Conectar Google Drive</button>`;
+    }
+
+    document.getElementById('driveChip').addEventListener('click', () => run(true));
+    document.getElementById('driveBox').addEventListener('click', e => {
+      if (e.target.id === 'gcidSave') {
+        const v = document.getElementById('gcid').value.trim();
+        if (!/\.apps\.googleusercontent\.com$/.test(v)) return toast('Ese no parece un ID de cliente de Google');
+        meta.clientId = v; writeMeta(); renderDrive(); return;
+      }
+      const act = e.target.dataset.drive;
+      if (act === 'sync') run(true);
+      if (act === 'off') {
+        if (!confirm('¿Desconectar Google Drive en este equipo? Tus datos siguen en Drive y en este navegador.')) return;
+        if (token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(token, () => {});
+        token = null; meta = { clientId: meta.clientId }; writeMeta(); setStatus('');
+      }
+    });
+    // Al volver a la pestaña o cada 3 minutos, trae los cambios hechos en otros equipos.
+    const pull = () => { if (meta.connected && hasToken()) run(false); };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+    setInterval(pull, 180000);
+
+    return { scheduleSync, render: renderDrive, connected: () => !!meta.connected && !onFile };
+  })();
+
   fillSettings();
   render();
+  Drive.render();
 })();
 </script>
 </body>
