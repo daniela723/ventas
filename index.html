@@ -141,6 +141,22 @@
   <!-- CARGAR -->
   <section id="cargar">
     <div class="card">
+      <h2>Subir el PDF de facturas del mes</h2>
+      <p class="muted" style="margin-top:0;font-size:14px">Lee de cada factura el cliente (Señores), el número, el total bruto, el IVA, las retenciones y el total a pagar. Si el medio de pago incluye <b>Desembolso Crédito plus</b>, solo ese valor queda pendiente. Las notas crédito anulan la factura a la que hacen referencia.</p>
+      <div class="row">
+        <label class="btn primary" style="margin:0;color:#fff">Elegir PDF<input type="file" id="pdfFile" accept=".pdf,application/pdf" multiple hidden></label>
+        <div style="min-width:260px;flex:1;max-width:420px">
+          <label>Facturas pagadas solo con "Efectivo - Otros"</label>
+          <select id="pdfCashRule">
+            <option value="pending">Cargar el total a pagar como pendiente</option>
+            <option value="skip">No cargarlas (ya fueron descontadas)</option>
+          </select>
+        </div>
+      </div>
+      <div id="pdfResult" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
       <h2>Agregar una factura</h2>
       <form id="invForm" class="form">
         <div><label>Cliente</label><input id="iClient" list="clientList" required placeholder="Nombre del cliente"></div>
@@ -301,21 +317,26 @@
   const clientById = id => S.clients.find(c => c.id === id);
   const clientName = id => clientById(id)?.name || '—';
 
-  function findOrCreateClient(name) {
-    const n = name.trim();
-    let c = S.clients.find(x => x.name.toLowerCase() === n.toLowerCase());
-    if (!c) { c = { id: uid(), name: n, email: '', contact: '', term: null }; S.clients.push(c); }
+  const nitKey = s => String(s || '').replace(/\D/g, '');
+  function findClient(name, nit) {
+    const k = nitKey(nit);
+    return (k && S.clients.find(x => nitKey(x.nit) === k)) || S.clients.find(x => x.name.toLowerCase() === name.trim().toLowerCase());
+  }
+  function findOrCreateClient(name, nit) {
+    let c = findClient(name, nit);
+    if (!c) { c = { id: uid(), name: name.trim(), nit: nit || '', email: '', contact: '', term: null }; S.clients.push(c); }
+    else if (nit && !c.nit) c.nit = nit;
     return c;
   }
   function dueFor(client, issue) {
     const term = client.term ?? S.settings.term ?? 30;
     return addDays(issue, Number(term));
   }
-  function addInvoice({ client, number, amount, issueDate, dueDate }) {
-    const c = findOrCreateClient(client);
+  function addInvoice({ client, nit, number, amount, issueDate, dueDate, detail }) {
+    const c = findOrCreateClient(client, nit);
     const dup = S.invoices.find(i => i.clientId === c.id && i.number.toLowerCase() === number.trim().toLowerCase());
     if (dup) return { error: `La factura ${number} de ${c.name} ya existe` };
-    S.invoices.push({ id: uid(), clientId: c.id, number: number.trim(), amount, issueDate, dueDate: dueDate || dueFor(c, issueDate), payments: [], created: today() });
+    S.invoices.push({ id: uid(), clientId: c.id, number: number.trim(), amount, issueDate, dueDate: dueDate || dueFor(c, issueDate), payments: [], created: today(), ...(detail || {}) });
     return { ok: true };
   }
   function bucket(days) {
@@ -422,7 +443,8 @@
       list.map(i => `<tr>
         <td>${esc(clientName(i.clientId))}</td><td><b>${esc(i.number)}</b></td>
         <td>${fmtDate(i.issueDate)}</td><td>${fmtDate(i.dueDate)}</td>
-        <td class="num">${money(i.amount)}</td><td class="num">${money(balanceOf(i))}</td>
+        <td class="num" title="${i.total != null ? `Bruto ${money(i.gross)} · IVA ${money(i.iva)} · Retenciones ${money(i.retention)}` : ''}">${money(i.total ?? i.amount)}</td>
+        <td class="num">${money(balanceOf(i))}${i.note ? `<div class="muted" style="font-size:12px">${esc(i.note)}</div>` : ''}</td>
         <td>${statusPill(i)}</td>
         <td class="row" style="flex-wrap:nowrap">${isOpen(i)
           ? `<button class="btn small ok" data-act="paid" data-id="${i.id}">Pagada</button>
@@ -487,7 +509,8 @@
       const d = overdueDays(i, cut);
       const state = d > 0 ? `vencida hace ${d} días` : d === 0 ? 'vence hoy' : `vence el ${fmtDate(i.dueDate)}`;
       const partial = paidOf(i) > 0 ? ` (saldo después de abonos; valor original ${money(i.amount)})` : '';
-      return `• Factura ${i.number} – emitida ${fmtDate(i.issueDate)} – ${money(balanceOf(i))} – ${state}${partial}`;
+      const ofTotal = i.total != null && Math.round(i.total) > Math.round(i.amount) ? ` pendiente de un total de ${money(i.total)}` : '';
+      return `• Factura ${i.number} – emitida ${fmtDate(i.issueDate)} – ${money(balanceOf(i))}${ofTotal} – ${state}${partial}`;
     });
     const subject = `Estado de cuenta ${st.company ? st.company + ' ' : ''}– ${client.name} – corte ${monthName(cut)}`;
     const body = [
@@ -615,6 +638,155 @@
     save(); toast(`${added} facturas guardadas`);
   });
 
+  // ---------- PDF de facturas ----------
+  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    return loadPdfJs.p ||= new Promise((ok, fail) => {
+      const s = document.createElement('script');
+      s.src = PDFJS + 'pdf.min.js';
+      s.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; ok(pdfjsLib); };
+      s.onerror = () => { loadPdfJs.p = null; fail(new Error('No se pudo cargar el lector de PDF. Revisa tu conexión a internet.')); };
+      document.head.appendChild(s);
+    });
+  }
+  // Números del PDF en formato 1,234,567.89
+  const pdfNum = s => { const m = String(s || '').match(/-?[\d,]+(?:\.\d+)?/); return m ? Number(m[0].replace(/,/g, '')) : NaN; };
+  const isNum = s => /^-?[\d,]+\.\d{2}$/.test(s.trim());
+
+  // Lee una página: el valor de cada campo es el texto a la derecha de su etiqueta, en la misma fila.
+  function parsePage(items) {
+    const its = items.filter(i => i.str.trim()).map(i => ({ s: i.str.trim(), x: i.transform[4], y: i.transform[5] }));
+    const all = re => its.filter(i => re.test(i.s));
+    const rightOf = (lab, pred = () => true) =>
+      its.filter(i => i !== lab && Math.abs(i.y - lab.y) < 4 && i.x > lab.x && pred(i.s)).sort((a, b) => a.x - b.x);
+    const textRight = re => { const l = all(re)[0]; return l ? rightOf(l)[0]?.s ?? '' : ''; };
+    const numRight = lab => { const v = rightOf(lab, isNum); return v.length ? pdfNum(v[0].s) : 0; };
+    const sum = re => all(re).reduce((a, l) => a + numRight(l), 0);
+    const dateOf = re => parseDate(textRight(re).split(',')[0]) || '';
+    const r2 = n => Math.round(n * 100) / 100;
+
+    const base = { client: textRight(/^Señores$/), nit: textRight(/^NIT$/), issueDate: dateOf(/^Expedici/), dueDate: dateOf(/^Vencimiento$/) };
+    if (all(/^Nota cr[eé]dito/i).length) {
+      const no = all(/^No\./)[0];
+      const number = no ? [no.s, ...rightOf(no).map(i => i.s)].join(' ').replace(/^No\.\s*/, '').replace(/\s*-\s*/g, '-') : '';
+      return { ...base, kind: 'credit', number, ref: textRight(/^Factura de Venta$/), total: r2(sum(/^Total$/)) };
+    }
+    if (!all(/^Señores$/).length) return null;
+    const no = all(/^No\.\s*\S+$/)[0];
+    return {
+      ...base, kind: 'invoice',
+      number: no ? no.s.replace(/^No\.\s*/, '') : '',
+      gross: r2(sum(/^Total Bruto$/)),
+      iva: r2(sum(/^IVA\b/)),
+      retention: r2(sum(/^Rete/i)),
+      total: r2(sum(/^Total a Pagar$/)),
+      credit: r2(sum(/Desembolso Cr[eé]dito/i)),
+      cash: r2(sum(/^Efectivo/i))
+    };
+  }
+
+  let pdfRows = [];
+  document.getElementById('pdfFile').addEventListener('change', async e => {
+    const files = [...e.target.files]; e.target.value = '';
+    if (!files.length) return;
+    const box = document.getElementById('pdfResult');
+    box.innerHTML = '<p class="muted">Leyendo el PDF…</p>';
+    try {
+      const lib = await loadPdfJs();
+      const pages = [];
+      for (const f of files) {
+        const doc = await lib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+        for (let n = 1; n <= doc.numPages; n++) {
+          const p = parsePage((await (await doc.getPage(n)).getTextContent()).items);
+          pages.push(p ? { ...p, page: n, file: f.name } : { kind: 'unknown', page: n, file: f.name });
+        }
+      }
+      pdfRows = pages;
+      classifyPdfRows();
+      renderPdfRows();
+    } catch (err) {
+      box.innerHTML = `<p class="pill p-bad">${esc(err.message || 'No se pudo leer el PDF')}</p>`;
+    }
+  });
+
+  // Decide qué se carga y con qué valor pendiente
+  function classifyPdfRows() {
+    const rule = document.getElementById('pdfCashRule').value;
+    const annulled = new Map(pdfRows.filter(r => r.kind === 'credit' && r.ref).map(r => [r.ref, r.number]));
+    pdfRows.forEach(r => {
+      r.status = ''; r.include = false; r.cls = 'p-bad';
+      if (r.kind === 'unknown') { r.status = 'Página sin factura'; r.cls = 'p-neutral'; return; }
+      if (r.kind === 'credit') {
+        const stored = S.invoices.find(i => i.number === r.ref && i.clientId === findClient(r.client, r.nit)?.id);
+        r.status = `Nota crédito: anula la factura ${r.ref}` + (stored ? ' (ya guardada, se eliminará)' : '');
+        r.cls = 'p-neutral'; r.include = !!stored; r.removes = stored?.id;
+        return;
+      }
+      if (!r.number || !r.client || !(r.total > 0)) { r.status = 'No se pudo leer, cárgala a mano'; return; }
+      if (annulled.has(r.number)) { r.status = `Anulada por nota crédito ${annulled.get(r.number)}`; r.cls = 'p-neutral'; return; }
+      const c = findClient(r.client, r.nit);
+      if (c && S.invoices.some(i => i.clientId === c.id && i.number === r.number)) { r.status = 'Ya está cargada'; r.cls = 'p-neutral'; return; }
+      if (r.pendingEdited == null) r.pending = r.credit > 0 ? r.credit : r.total;
+      r.note = r.credit > 0 ? 'Desembolso Crédito plus' : '';
+      if (!r.credit && rule === 'skip') { r.status = 'Solo efectivo: ya descontada'; r.cls = 'p-neutral'; return; }
+      r.status = r.credit > 0 ? 'Pendiente: solo Desembolso Crédito plus' : 'Pendiente: total a pagar';
+      r.cls = 'p-ok'; r.include = true;
+    });
+  }
+
+  function renderPdfRows() {
+    const box = document.getElementById('pdfResult');
+    if (!pdfRows.length) { box.innerHTML = ''; return; }
+    const loadable = pdfRows.filter(r => r.kind === 'invoice' && r.include);
+    const removals = pdfRows.filter(r => r.kind === 'credit' && r.include);
+    box.innerHTML = `<div class="table-wrap"><table>
+      <tr><th></th><th>Factura</th><th>Cliente</th><th>Expedición</th><th class="num">Total bruto</th><th class="num">IVA</th><th class="num">Retenciones</th><th class="num">Total a pagar</th><th class="num">Pendiente</th><th>Estado</th></tr>
+      ${pdfRows.map((r, k) => r.kind === 'unknown'
+        ? `<tr><td></td><td colspan="9" class="muted">${esc(r.file)} · página ${r.page}: no se encontró una factura</td></tr>`
+        : `<tr>
+        <td>${r.kind === 'invoice' && r.status && !/No se pudo|Ya está|Anulada/.test(r.status) ? `<input type="checkbox" data-pinc="${k}" ${r.include ? 'checked' : ''} style="width:auto">` : ''}</td>
+        <td><b>${esc(r.number)}</b></td><td>${esc(r.client)}</td><td>${fmtDate(r.issueDate)}</td>
+        <td class="num">${r.kind === 'invoice' ? money(r.gross) : ''}</td><td class="num">${r.kind === 'invoice' ? money(r.iva) : ''}</td>
+        <td class="num">${r.kind === 'invoice' ? money(r.retention) : ''}</td><td class="num">${money(r.total)}</td>
+        <td class="num">${r.kind === 'invoice' && r.include ? `<input data-ppend="${k}" value="${Math.round(r.pending).toLocaleString('es-CO')}" style="width:130px;text-align:right">` : ''}</td>
+        <td><span class="pill ${r.cls}" style="white-space:normal">${esc(r.status)}</span></td></tr>`).join('')}
+      </table></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="pdfSave" ${loadable.length || removals.length ? '' : 'disabled'}>Guardar ${loadable.length} factura${loadable.length === 1 ? '' : 's'}</button>
+        <span class="muted">Total pendiente a cargar: <b>${money(loadable.reduce((a, r) => a + r.pending, 0))}</b>${removals.length ? ` · ${removals.length} factura(s) anuladas se eliminarán` : ''}</span>
+      </div>`;
+  }
+
+  document.getElementById('pdfCashRule').addEventListener('change', () => { if (pdfRows.length) { classifyPdfRows(); renderPdfRows(); } });
+  document.getElementById('pdfResult').addEventListener('change', e => {
+    const inc = e.target.dataset.pinc, pend = e.target.dataset.ppend;
+    if (inc != null) { pdfRows[inc].include = e.target.checked; renderPdfRows(); }
+    if (pend != null) {
+      const v = parseAmount(e.target.value);
+      if (v >= 0) { pdfRows[pend].pending = v; pdfRows[pend].pendingEdited = true; }
+      renderPdfRows();
+    }
+  });
+  document.getElementById('pdfResult').addEventListener('click', e => {
+    if (e.target.id !== 'pdfSave') return;
+    let added = 0, removed = 0;
+    pdfRows.forEach(r => {
+      if (!r.include) return;
+      if (r.kind === 'credit' && r.removes) { S.invoices = S.invoices.filter(i => i.id !== r.removes); removed++; return; }
+      if (r.kind !== 'invoice' || !(r.pending > 0)) return;
+      const res = addInvoice({
+        client: r.client, nit: r.nit, number: r.number, amount: r.pending, issueDate: r.issueDate || today(), dueDate: r.dueDate,
+        detail: { gross: r.gross, iva: r.iva, retention: r.retention, total: r.total, note: r.note, source: 'pdf' }
+      });
+      if (res.ok) added++;
+    });
+    pdfRows = [];
+    renderPdfRows();
+    save();
+    toast(`${added} facturas guardadas` + (removed ? ` · ${removed} anuladas eliminadas` : ''));
+  });
+
   // Acciones sobre facturas
   document.getElementById('invTable').addEventListener('click', e => {
     const b = e.target.closest('button[data-act]'); if (!b) return;
@@ -645,8 +817,10 @@
 
   // Exportar CSV (abre en Excel)
   document.getElementById('exportCsv').addEventListener('click', () => {
-    const rows = [['Cliente', 'Factura', 'Emisión', 'Vencimiento', 'Valor', 'Abonado', 'Saldo', 'Días vencida', 'Estado']];
-    S.invoices.forEach(i => rows.push([clientName(i.clientId), i.number, fmtDate(i.issueDate), fmtDate(i.dueDate), i.amount, paidOf(i), balanceOf(i),
+    const rows = [['Cliente', 'NIT', 'Factura', 'Emisión', 'Vencimiento', 'Total bruto', 'IVA', 'Retenciones', 'Total a pagar', 'Valor a cobrar', 'Abonado', 'Saldo', 'Días vencida', 'Estado']];
+    const n = v => v == null ? '' : String(Math.round(v));
+    S.invoices.forEach(i => rows.push([clientName(i.clientId), clientById(i.clientId)?.nit || '', i.number, fmtDate(i.issueDate), fmtDate(i.dueDate),
+      n(i.gross), n(i.iva), n(i.retention), n(i.total), n(i.amount), n(paidOf(i)), n(balanceOf(i)),
       isOpen(i) ? Math.max(0, overdueDays(i)) : '', isOpen(i) ? 'Pendiente' : 'Pagada']));
     const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
     download(`cartera-${today()}.csv`, csv, 'text/csv');
